@@ -13,7 +13,8 @@ pub const WM_TRAY: u32 = 0x8000 + 77;
 
 pub const ID_TOGGLE_ENABLED: usize = 1001;
 pub const ID_RELOAD_MONITORS: usize = 1002;
-pub const ID_EXIT: usize = 1003;
+pub const ID_RESET_DEFAULTS: usize = 1003;
+pub const ID_EXIT: usize = 1004;
 
 pub const ID_COLOR_CURRENT: usize = 2000;
 pub const ID_COLOR_PICKER: usize = 2001;
@@ -151,6 +152,7 @@ impl TrayIcon {
 
             append_checked(menu, ID_TOGGLE_ENABLED, w!("Enabled"), state.enabled);
             let _ = AppendMenuW(menu, MF_STRING, ID_RELOAD_MONITORS, w!("Reload monitors"));
+            let _ = AppendMenuW(menu, MF_STRING, ID_RESET_DEFAULTS, w!("Reset to defaults"));
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
 
             let color_label = format_color_label(state.color);

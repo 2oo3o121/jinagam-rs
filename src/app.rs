@@ -26,8 +26,8 @@ use crate::overlay_window::{
 use crate::tray::{
     TrayIcon, TrayMenuState, TrayOptimizationMode, ID_COLOR_PICKER, ID_DURATION_LONG,
     ID_DURATION_NORMAL, ID_DURATION_SHORT, ID_EXIT, ID_OPTIMIZE_EFFICIENT, ID_OPTIMIZE_SMOOTH,
-    ID_RELOAD_MONITORS, ID_SPAN_FULL, ID_SPAN_SEGMENT, ID_TOGGLE_ENABLED, ID_WIDTH_NORMAL,
-    ID_WIDTH_THICK, ID_WIDTH_THIN,
+    ID_RELOAD_MONITORS, ID_RESET_DEFAULTS, ID_SPAN_FULL, ID_SPAN_SEGMENT, ID_TOGGLE_ENABLED,
+    ID_WIDTH_NORMAL, ID_WIDTH_THICK, ID_WIDTH_THIN,
 };
 
 const HIDDEN_CLASS: PCWSTR = w!("jinagam_rs_hidden");
@@ -274,6 +274,7 @@ impl App {
                 }
             }
             ID_RELOAD_MONITORS => self.monitor_cache.refresh(),
+            ID_RESET_DEFAULTS => self.settings = default_settings(),
             ID_COLOR_PICKER => {
                 if let Some(color) = self.choose_color() {
                     self.settings.overlay.color = color;
@@ -387,8 +388,8 @@ fn default_settings() -> Settings {
     Settings {
         enabled: true,
         overlay: OverlayStyle {
-            color: COLORREF(0x00FFB46E),
-            width: 32,
+            color: COLORREF(0x00FF8000),
+            width: 48,
             intensity: 220,
             duration_ms: 220,
         },
