@@ -1,3 +1,7 @@
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{MonitorFromPoint, HMONITOR, MONITOR_DEFAULTTONEAREST};
@@ -16,10 +20,14 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::monitor_cache::MonitorCache;
-use crate::overlay_window::{OverlayStyle, OverlayWindow};
+use crate::overlay_window::{
+    performance_for_mode, OverlayOptimizationMode, OverlayStyle, OverlayWindow,
+};
 use crate::tray::{
-    TrayIcon, TrayMenuState, ID_COLOR_PICKER, ID_EXIT, ID_RELOAD_MONITORS, ID_SPAN_FULL,
-    ID_SPAN_SEGMENT, ID_TOGGLE_ENABLED, ID_WIDTH_NORMAL, ID_WIDTH_THICK, ID_WIDTH_THIN,
+    TrayIcon, TrayMenuState, TrayOptimizationMode, ID_COLOR_PICKER, ID_DURATION_LONG,
+    ID_DURATION_NORMAL, ID_DURATION_SHORT, ID_EXIT, ID_OPTIMIZE_EFFICIENT, ID_OPTIMIZE_SMOOTH,
+    ID_RELOAD_MONITORS, ID_SPAN_FULL, ID_SPAN_SEGMENT, ID_TOGGLE_ENABLED, ID_WIDTH_NORMAL,
+    ID_WIDTH_THICK, ID_WIDTH_THIN,
 };
 
 const HIDDEN_CLASS: PCWSTR = w!("jinagam_rs_hidden");
@@ -27,7 +35,7 @@ const POLL_TIMER_ID: usize = 1;
 const POLL_INTERVAL_MS: u32 = 8;
 const SPAN_PAD: i32 = 4;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum BoundarySpanMode {
     CrossingSegment,
     FullBoundary,
@@ -38,6 +46,7 @@ struct Settings {
     enabled: bool,
     overlay: OverlayStyle,
     span_mode: BoundarySpanMode,
+    optimization: OverlayOptimizationMode,
 }
 
 pub struct App {
@@ -56,6 +65,7 @@ pub struct App {
 impl App {
     pub fn new() -> Result<Self, String> {
         let module: HMODULE = unsafe { GetModuleHandleW(None).map_err(|_| "failed to get module handle")? };
+        let settings = load_settings().unwrap_or_else(default_settings);
         Ok(Self {
             instance: HINSTANCE(module.0),
             hidden_hwnd: HWND::default(),
@@ -66,16 +76,7 @@ impl App {
             initialized: false,
             last_monitor: HMONITOR::default(),
             last_rect: RECT::default(),
-            settings: Settings {
-                enabled: true,
-                overlay: OverlayStyle {
-                    color: COLORREF(0x002830FF),
-                    width: 48,
-                    intensity: 220,
-                    duration_ms: 220,
-                },
-                span_mode: BoundarySpanMode::FullBoundary,
-            },
+            settings,
         })
     }
 
@@ -85,6 +86,8 @@ impl App {
         }
 
         self.overlay.create(self.instance)?;
+        self.overlay
+            .update_performance(performance_for_mode(self.settings.optimization));
 
         let class = WNDCLASSW {
             lpfnWndProc: Some(Self::wnd_proc),
@@ -134,6 +137,8 @@ impl App {
     fn on_create(&mut self) -> Result<(), String> {
         self.monitor_cache.refresh();
         self.tray.add(self.hidden_hwnd, "jinagam-rs monitor boundary glow")?;
+        self.overlay
+            .update_performance(performance_for_mode(self.settings.optimization));
         self.overlay.update_style(self.settings.overlay);
         Ok(())
     }
@@ -277,15 +282,23 @@ impl App {
             ID_WIDTH_THIN => self.settings.overlay.width = 32,
             ID_WIDTH_NORMAL => self.settings.overlay.width = 48,
             ID_WIDTH_THICK => self.settings.overlay.width = 72,
+            ID_DURATION_SHORT => self.settings.overlay.duration_ms = 140,
+            ID_DURATION_NORMAL => self.settings.overlay.duration_ms = 220,
+            ID_DURATION_LONG => self.settings.overlay.duration_ms = 340,
             ID_SPAN_SEGMENT => self.settings.span_mode = BoundarySpanMode::CrossingSegment,
             ID_SPAN_FULL => self.settings.span_mode = BoundarySpanMode::FullBoundary,
+            ID_OPTIMIZE_SMOOTH => self.settings.optimization = OverlayOptimizationMode::Smooth,
+            ID_OPTIMIZE_EFFICIENT => self.settings.optimization = OverlayOptimizationMode::Efficient,
             ID_EXIT => unsafe {
                 let _ = DestroyWindow(self.hidden_hwnd);
             },
             _ => {}
         }
 
+        self.overlay
+            .update_performance(performance_for_mode(self.settings.optimization));
         self.overlay.update_style(self.settings.overlay);
+        let _ = save_settings(self.settings);
     }
 
     fn choose_color(&mut self) -> Option<COLORREF> {
@@ -359,10 +372,104 @@ impl App {
         TrayMenuState {
             enabled: self.settings.enabled,
             width: self.settings.overlay.width,
+            duration_ms: self.settings.overlay.duration_ms,
             span_full: matches!(self.settings.span_mode, BoundarySpanMode::FullBoundary),
             color: self.settings.overlay.color,
+            optimization: match self.settings.optimization {
+                OverlayOptimizationMode::Smooth => TrayOptimizationMode::Smooth,
+                OverlayOptimizationMode::Efficient => TrayOptimizationMode::Efficient,
+            },
         }
     }
+}
+
+fn default_settings() -> Settings {
+    Settings {
+        enabled: true,
+        overlay: OverlayStyle {
+            color: COLORREF(0x00FFB46E),
+            width: 32,
+            intensity: 220,
+            duration_ms: 220,
+        },
+        span_mode: BoundarySpanMode::FullBoundary,
+        optimization: OverlayOptimizationMode::Efficient,
+    }
+}
+
+fn load_settings() -> Option<Settings> {
+    let path = settings_path()?;
+    let content = fs::read_to_string(path).ok()?;
+    let mut settings = default_settings();
+
+    for line in content.lines() {
+        let (key, value) = line.split_once('=')?;
+        match key.trim() {
+            "enabled" => settings.enabled = matches!(value.trim(), "1" | "true" | "yes"),
+            "color" => {
+                let parsed = u32::from_str_radix(value.trim(), 16).ok()?;
+                settings.overlay.color = COLORREF(parsed);
+            }
+            "width" => {
+                let parsed = value.trim().parse::<i32>().ok()?;
+                settings.overlay.width = parsed.max(12);
+            }
+            "duration_ms" => {
+                let parsed = value.trim().parse::<u32>().ok()?;
+                settings.overlay.duration_ms = parsed.max(60);
+            }
+            "span_mode" => {
+                settings.span_mode = if value.trim().eq_ignore_ascii_case("segment") {
+                    BoundarySpanMode::CrossingSegment
+                } else {
+                    BoundarySpanMode::FullBoundary
+                };
+            }
+            "optimization" => {
+                settings.optimization = match value.trim().to_ascii_lowercase().as_str() {
+                    "smooth" => OverlayOptimizationMode::Smooth,
+                    _ => OverlayOptimizationMode::Efficient,
+                };
+            }
+            _ => {}
+        }
+    }
+
+    Some(settings)
+}
+
+fn save_settings(settings: Settings) -> Result<(), String> {
+    let path = settings_path().ok_or_else(|| "failed to resolve settings path".to_string())?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("failed to create settings dir: {err}"))?;
+    }
+
+    let span_mode = match settings.span_mode {
+        BoundarySpanMode::CrossingSegment => "segment",
+        BoundarySpanMode::FullBoundary => "full",
+    };
+    let optimization = match settings.optimization {
+        OverlayOptimizationMode::Smooth => "smooth",
+        OverlayOptimizationMode::Efficient => "efficient",
+    };
+    let body = format!(
+        "enabled={}\ncolor={:08X}\nwidth={}\nduration_ms={}\nspan_mode={}\noptimization={}\n",
+        if settings.enabled { 1 } else { 0 },
+        settings.overlay.color.0,
+        settings.overlay.width,
+        settings.overlay.duration_ms,
+        span_mode,
+        optimization,
+    );
+
+    fs::write(path, body).map_err(|err| format!("failed to write settings: {err}"))
+}
+
+fn settings_path() -> Option<PathBuf> {
+    let base = env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .or_else(|| env::current_dir().ok())?;
+    Some(base.join("jinagam-rs").join("settings.txt"))
 }
 
 fn clamp_center(center: i32, start: i32, end: i32, span: i32) -> i32 {

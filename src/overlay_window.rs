@@ -18,7 +18,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 const OVERLAY_CLASS: PCWSTR = w!("jinagam_rs_overlay");
 const FADE_TIMER_ID: usize = 1;
-const FADE_TICK_MS: u32 = 16;
 
 #[derive(Clone, Copy)]
 pub struct OverlayStyle {
@@ -28,6 +27,18 @@ pub struct OverlayStyle {
     pub duration_ms: u32,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum OverlayOptimizationMode {
+    Smooth,
+    Efficient,
+}
+
+#[derive(Clone, Copy)]
+pub struct OverlayPerformance {
+    pub timer_tick_ms: u32,
+    pub edge_feather: bool,
+}
+
 pub struct OverlayWindow {
     hwnd: HWND,
     band_rect: RECT,
@@ -35,6 +46,7 @@ pub struct OverlayWindow {
     visible: bool,
     started_at: Option<Instant>,
     style: OverlayStyle,
+    performance: OverlayPerformance,
     mem_dc: HDC,
     dib: HBITMAP,
     old_bmp: HGDIOBJ,
@@ -57,6 +69,7 @@ impl OverlayWindow {
                 intensity: 220,
                 duration_ms: 220,
             },
+            performance: performance_for_mode(OverlayOptimizationMode::Efficient),
             mem_dc: HDC::default(),
             dib: HBITMAP::default(),
             old_bmp: HGDIOBJ::default(),
@@ -126,16 +139,30 @@ impl OverlayWindow {
             );
             let _ = ShowWindow(self.hwnd, SW_SHOWNA);
             let _ = KillTimer(self.hwnd, FADE_TIMER_ID);
-            SetTimer(self.hwnd, FADE_TIMER_ID, FADE_TICK_MS, None);
+            SetTimer(self.hwnd, FADE_TIMER_ID, self.performance.timer_tick_ms, None);
         }
 
-        let _ = self.render_and_present();
+        let _ = self.render_bitmap();
+        let _ = self.present_with_opacity(self.opacity());
     }
 
     pub fn update_style(&mut self, style: OverlayStyle) {
         self.style = style;
         if self.visible {
-            let _ = self.render_and_present();
+            let _ = self.render_bitmap();
+            let _ = self.present_with_opacity(self.opacity());
+        }
+    }
+
+    pub fn update_performance(&mut self, performance: OverlayPerformance) {
+        self.performance = performance;
+        if self.visible {
+            unsafe {
+                let _ = KillTimer(self.hwnd, FADE_TIMER_ID);
+                SetTimer(self.hwnd, FADE_TIMER_ID, self.performance.timer_tick_ms, None);
+            }
+            let _ = self.render_bitmap();
+            let _ = self.present_with_opacity(self.opacity());
         }
     }
 
@@ -154,7 +181,7 @@ impl OverlayWindow {
                 if self.opacity() <= 0.0 {
                     self.hide();
                 } else {
-                    let _ = self.render_and_present();
+                    let _ = self.present_with_opacity(self.opacity());
                 }
                 LRESULT(0)
             }
@@ -254,7 +281,7 @@ impl OverlayWindow {
         self.surface_h = 0;
     }
 
-    fn render_and_present(&mut self) -> Result<(), String> {
+    fn render_bitmap(&mut self) -> Result<(), String> {
         if !self.visible {
             return Ok(());
         }
@@ -266,6 +293,20 @@ impl OverlayWindow {
 
         self.ensure_surface(width, height)?;
         self.paint_pixels(width as usize, height as usize);
+
+        Ok(())
+    }
+
+    fn present_with_opacity(&mut self, opacity: f32) -> Result<(), String> {
+        if !self.visible {
+            return Ok(());
+        }
+
+        let width = self.surface_w;
+        let height = self.surface_h;
+        if width <= 0 || height <= 0 {
+            return Ok(());
+        }
 
         let dst = POINT {
             x: self.band_rect.left,
@@ -279,7 +320,7 @@ impl OverlayWindow {
         let blend = BLENDFUNCTION {
             BlendOp: AC_SRC_OVER as u8,
             BlendFlags: 0,
-            SourceConstantAlpha: 255,
+            SourceConstantAlpha: (opacity.clamp(0.0, 1.0) * 255.0).round() as u8,
             AlphaFormat: AC_SRC_ALPHA as u8,
         };
 
@@ -302,8 +343,7 @@ impl OverlayWindow {
     }
 
     fn paint_pixels(&mut self, width: usize, height: usize) {
-        let opacity = self.opacity().clamp(0.0, 1.0);
-        let base_alpha = (self.style.intensity as f32 * opacity).round() as u8;
+        let base_alpha = self.style.intensity;
         let feather = (self.style.width.max(12) as f32) * 0.5;
         let core = feather * 0.22;
 
@@ -335,12 +375,16 @@ impl OverlayWindow {
                     1.0 - ((axis_distance - core) / (feather - core))
                 };
 
-                let along_opacity = if self.vertical {
-                    let margin = y.min(height - 1 - y) as f32;
-                    (0.82 + (margin / (height.max(2) as f32 * 0.5)).min(1.0) * 0.18).min(1.0)
+                let along_opacity = if self.performance.edge_feather {
+                    if self.vertical {
+                        let margin = y.min(height - 1 - y) as f32;
+                        (0.82 + (margin / (height.max(2) as f32 * 0.5)).min(1.0) * 0.18).min(1.0)
+                    } else {
+                        let margin = x.min(width - 1 - x) as f32;
+                        (0.82 + (margin / (width.max(2) as f32 * 0.5)).min(1.0) * 0.18).min(1.0)
+                    }
                 } else {
-                    let margin = x.min(width - 1 - x) as f32;
-                    (0.82 + (margin / (width.max(2) as f32 * 0.5)).min(1.0) * 0.18).min(1.0)
+                    1.0
                 };
 
                 let alpha = (base_alpha as f32 * edge_opacity * along_opacity).round() as u8;
@@ -386,5 +430,18 @@ impl Drop for OverlayWindow {
                 let _ = DestroyWindow(self.hwnd);
             }
         }
+    }
+}
+
+pub fn performance_for_mode(mode: OverlayOptimizationMode) -> OverlayPerformance {
+    match mode {
+        OverlayOptimizationMode::Smooth => OverlayPerformance {
+            timer_tick_ms: 16,
+            edge_feather: true,
+        },
+        OverlayOptimizationMode::Efficient => OverlayPerformance {
+            timer_tick_ms: 33,
+            edge_feather: false,
+        },
     }
 }

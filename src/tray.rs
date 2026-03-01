@@ -22,15 +22,30 @@ pub const ID_WIDTH_THIN: usize = 2101;
 pub const ID_WIDTH_NORMAL: usize = 2102;
 pub const ID_WIDTH_THICK: usize = 2103;
 
+pub const ID_DURATION_SHORT: usize = 2301;
+pub const ID_DURATION_NORMAL: usize = 2302;
+pub const ID_DURATION_LONG: usize = 2303;
+
 pub const ID_SPAN_SEGMENT: usize = 2401;
 pub const ID_SPAN_FULL: usize = 2402;
+
+pub const ID_OPTIMIZE_SMOOTH: usize = 2501;
+pub const ID_OPTIMIZE_EFFICIENT: usize = 2502;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TrayOptimizationMode {
+    Smooth,
+    Efficient,
+}
 
 #[derive(Clone, Copy)]
 pub struct TrayMenuState {
     pub enabled: bool,
     pub width: i32,
+    pub duration_ms: u32,
     pub span_full: bool,
     pub color: COLORREF,
+    pub optimization: TrayOptimizationMode,
 }
 
 #[derive(Default)]
@@ -112,7 +127,22 @@ impl TrayIcon {
                 let _ = DestroyMenu(menu);
                 return;
             };
+            let Ok(duration_menu) = CreatePopupMenu() else {
+                let _ = DestroyMenu(width_menu);
+                let _ = DestroyMenu(color_menu);
+                let _ = DestroyMenu(menu);
+                return;
+            };
             let Ok(span_menu) = CreatePopupMenu() else {
+                let _ = DestroyMenu(duration_menu);
+                let _ = DestroyMenu(width_menu);
+                let _ = DestroyMenu(color_menu);
+                let _ = DestroyMenu(menu);
+                return;
+            };
+            let Ok(opt_menu) = CreatePopupMenu() else {
+                let _ = DestroyMenu(span_menu);
+                let _ = DestroyMenu(duration_menu);
                 let _ = DestroyMenu(width_menu);
                 let _ = DestroyMenu(color_menu);
                 let _ = DestroyMenu(menu);
@@ -140,9 +170,28 @@ impl TrayIcon {
             append_checked(width_menu, ID_WIDTH_THICK, w!("Thick (72px)"), state.width == 72);
             let _ = AppendMenuW(menu, MF_POPUP, width_menu.0 as usize, w!("Width"));
 
+            append_checked(duration_menu, ID_DURATION_SHORT, w!("Short"), state.duration_ms == 140);
+            append_checked(duration_menu, ID_DURATION_NORMAL, w!("Normal"), state.duration_ms == 220);
+            append_checked(duration_menu, ID_DURATION_LONG, w!("Long"), state.duration_ms == 340);
+            let _ = AppendMenuW(menu, MF_POPUP, duration_menu.0 as usize, w!("Duration"));
+
             append_checked(span_menu, ID_SPAN_SEGMENT, w!("Crossing segment"), !state.span_full);
             append_checked(span_menu, ID_SPAN_FULL, w!("Full boundary"), state.span_full);
             let _ = AppendMenuW(menu, MF_POPUP, span_menu.0 as usize, w!("Span"));
+
+            append_checked(
+                opt_menu,
+                ID_OPTIMIZE_SMOOTH,
+                w!("Smooth"),
+                state.optimization == TrayOptimizationMode::Smooth,
+            );
+            append_checked(
+                opt_menu,
+                ID_OPTIMIZE_EFFICIENT,
+                w!("Efficient"),
+                state.optimization == TrayOptimizationMode::Efficient,
+            );
+            let _ = AppendMenuW(menu, MF_POPUP, opt_menu.0 as usize, w!("Performance"));
 
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
             let _ = AppendMenuW(menu, MF_STRING, ID_EXIT, w!("Quit"));
@@ -160,7 +209,9 @@ impl TrayIcon {
                 None,
             );
 
+            let _ = DestroyMenu(opt_menu);
             let _ = DestroyMenu(span_menu);
+            let _ = DestroyMenu(duration_menu);
             let _ = DestroyMenu(width_menu);
             let _ = DestroyMenu(color_menu);
             let _ = DestroyMenu(menu);
