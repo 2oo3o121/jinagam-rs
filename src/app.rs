@@ -3,20 +3,24 @@ use std::fs;
 use std::path::PathBuf;
 
 use windows::core::{w, PCWSTR};
-use windows::Win32::Foundation::{COLORREF, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{
+    COLORREF, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
+};
 use windows::Win32::Graphics::Gdi::{MonitorFromPoint, HMONITOR, MONITOR_DEFAULTTONEAREST};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::Dialogs::{
-    ChooseColorW, CHOOSECOLORW, CC_ANYCOLOR, CC_FULLOPEN, CC_RGBINIT,
+    ChooseColorW, CC_ANYCOLOR, CC_FULLOPEN, CC_RGBINIT, CHOOSECOLORW,
 };
-use windows::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
+use windows::Win32::UI::HiDpi::{
+    SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetCursorPos, GetMessageW,
     GetSystemMetrics, GetWindowLongPtrW, LoadCursorW, PostQuitMessage, RegisterClassW, SetTimer,
-    SetWindowLongPtrW, TranslateMessage, CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, HCURSOR, HMENU,
-    IDC_ARROW, MSG, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_DISPLAYCHANGE, WM_NCCREATE,
-    WM_TIMER, WNDCLASSW, WS_OVERLAPPED,
+    SetWindowLongPtrW, TranslateMessage, CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, HCURSOR,
+    HMENU, IDC_ARROW, MSG, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+    SM_YVIRTUALSCREEN, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_DESTROY,
+    WM_DISPLAYCHANGE, WM_NCCREATE, WM_TIMER, WNDCLASSW, WS_OVERLAPPED,
 };
 
 use crate::monitor_cache::MonitorCache;
@@ -64,7 +68,8 @@ pub struct App {
 
 impl App {
     pub fn new() -> Result<Self, String> {
-        let module: HMODULE = unsafe { GetModuleHandleW(None).map_err(|_| "failed to get module handle")? };
+        let module: HMODULE =
+            unsafe { GetModuleHandleW(None).map_err(|_| "failed to get module handle")? };
         let settings = load_settings().unwrap_or_else(default_settings);
         Ok(Self {
             instance: HINSTANCE(module.0),
@@ -136,7 +141,8 @@ impl App {
 
     fn on_create(&mut self) -> Result<(), String> {
         self.monitor_cache.refresh();
-        self.tray.add(self.hidden_hwnd, "jinagam-rs monitor boundary glow")?;
+        self.tray
+            .add(self.hidden_hwnd, "jinagam-rs monitor boundary glow")?;
         self.overlay
             .update_performance(performance_for_mode(self.settings.optimization));
         self.overlay.update_style(self.settings.overlay);
@@ -158,7 +164,10 @@ impl App {
         let current_monitor = unsafe { MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST) };
         if !self.initialized {
             self.last_monitor = current_monitor;
-            self.last_rect = self.monitor_cache.rect_for(current_monitor).unwrap_or_default();
+            self.last_rect = self
+                .monitor_cache
+                .rect_for(current_monitor)
+                .unwrap_or_default();
             self.initialized = true;
             return;
         }
@@ -168,14 +177,19 @@ impl App {
         }
 
         let previous_rect = self.last_rect;
-        let current_rect = self.monitor_cache.rect_for(current_monitor).unwrap_or_default();
+        let current_rect = self
+            .monitor_cache
+            .rect_for(current_monitor)
+            .unwrap_or_default();
         if current_rect.right <= current_rect.left || current_rect.bottom <= current_rect.top {
             self.last_monitor = current_monitor;
             self.last_rect = current_rect;
             return;
         }
 
-        if let Some((band, vertical)) = self.compute_boundary_band(previous_rect, current_rect, cursor) {
+        if let Some((band, vertical)) =
+            self.compute_boundary_band(previous_rect, current_rect, cursor)
+        {
             self.overlay.show_band(band, vertical);
         }
 
@@ -183,7 +197,12 @@ impl App {
         self.last_rect = current_rect;
     }
 
-    fn compute_boundary_band(&self, previous: RECT, current: RECT, cursor: POINT) -> Option<(RECT, bool)> {
+    fn compute_boundary_band(
+        &self,
+        previous: RECT,
+        current: RECT,
+        cursor: POINT,
+    ) -> Option<(RECT, bool)> {
         let (vertical, boundary) = pick_boundary_axis(previous, current, cursor);
 
         let thickness = self.settings.overlay.width.max(12);
@@ -204,12 +223,10 @@ impl App {
                         (center_y + segment_len / 2).min(overlap_bottom),
                     )
                 }
-                BoundarySpanMode::FullBoundary => {
-                    (
-                        previous.top.min(current.top) - SPAN_PAD,
-                        previous.bottom.max(current.bottom) + SPAN_PAD,
-                    )
-                }
+                BoundarySpanMode::FullBoundary => (
+                    previous.top.min(current.top) - SPAN_PAD,
+                    previous.bottom.max(current.bottom) + SPAN_PAD,
+                ),
             };
             RECT {
                 left: boundary - (thickness / 2),
@@ -233,12 +250,10 @@ impl App {
                         (center_x + segment_len / 2).min(overlap_right),
                     )
                 }
-                BoundarySpanMode::FullBoundary => {
-                    (
-                        previous.left.min(current.left) - SPAN_PAD,
-                        previous.right.max(current.right) + SPAN_PAD,
-                    )
-                }
+                BoundarySpanMode::FullBoundary => (
+                    previous.left.min(current.left) - SPAN_PAD,
+                    previous.right.max(current.right) + SPAN_PAD,
+                ),
             };
             RECT {
                 left,
@@ -289,7 +304,9 @@ impl App {
             ID_SPAN_SEGMENT => self.settings.span_mode = BoundarySpanMode::CrossingSegment,
             ID_SPAN_FULL => self.settings.span_mode = BoundarySpanMode::FullBoundary,
             ID_OPTIMIZE_SMOOTH => self.settings.optimization = OverlayOptimizationMode::Smooth,
-            ID_OPTIMIZE_EFFICIENT => self.settings.optimization = OverlayOptimizationMode::Efficient,
+            ID_OPTIMIZE_EFFICIENT => {
+                self.settings.optimization = OverlayOptimizationMode::Efficient
+            }
             ID_EXIT => unsafe {
                 let _ = DestroyWindow(self.hidden_hwnd);
             },
@@ -350,7 +367,7 @@ impl App {
                     LRESULT(0)
                 }
                 WM_COMMAND => {
-                    app.handle_command((wparam.0 & 0xFFFF) as usize);
+                    app.handle_command(wparam.0 & 0xFFFF);
                     LRESULT(0)
                 }
                 WM_DESTROY => {
@@ -442,7 +459,8 @@ fn load_settings() -> Option<Settings> {
 fn save_settings(settings: Settings) -> Result<(), String> {
     let path = settings_path().ok_or_else(|| "failed to resolve settings path".to_string())?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|err| format!("failed to create settings dir: {err}"))?;
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("failed to create settings dir: {err}"))?;
     }
 
     let span_mode = match settings.span_mode {
@@ -515,7 +533,8 @@ fn pick_boundary_axis(previous: RECT, current: RECT, cursor: POINT) -> (bool, i3
         let prev_center_y = (previous.top + previous.bottom) / 2;
         let cur_center_x = (current.left + current.right) / 2;
         let cur_center_y = (current.top + current.bottom) / 2;
-        best_axis = if (cur_center_x - prev_center_x).abs() >= (cur_center_y - prev_center_y).abs() {
+        best_axis = if (cur_center_x - prev_center_x).abs() >= (cur_center_y - prev_center_y).abs()
+        {
             1
         } else {
             2
@@ -523,10 +542,18 @@ fn pick_boundary_axis(previous: RECT, current: RECT, cursor: POINT) -> (bool, i3
     }
 
     if best_axis == 1 {
-        let edge_x = if exited_left { previous.left } else { previous.right };
+        let edge_x = if exited_left {
+            previous.left
+        } else {
+            previous.right
+        };
         (true, edge_x)
     } else {
-        let edge_y = if exited_top { previous.top } else { previous.bottom };
+        let edge_y = if exited_top {
+            previous.top
+        } else {
+            previous.bottom
+        };
         (false, edge_y)
     }
 }

@@ -2,16 +2,18 @@ use std::mem::size_of;
 use std::time::Instant;
 
 use windows::core::{w, PCWSTR};
-use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
+use windows::Win32::Foundation::{
+    COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
+};
 use windows::Win32::Graphics::Gdi::{
     CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC, SelectObject,
-    AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, DIB_RGB_COLORS,
+    AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS,
     HBITMAP, HDC, HGDIOBJ,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, GetWindowLongPtrW, KillTimer,
     RegisterClassW, SetTimer, SetWindowLongPtrW, SetWindowPos, ShowWindow, UpdateLayeredWindow,
-    CREATESTRUCTW, GWLP_USERDATA, HWND_TOPMOST, SW_HIDE, SW_SHOWNA, SWP_NOACTIVATE, ULW_ALPHA,
+    CREATESTRUCTW, GWLP_USERDATA, HWND_TOPMOST, SWP_NOACTIVATE, SW_HIDE, SW_SHOWNA, ULW_ALPHA,
     WINDOW_EX_STYLE, WINDOW_STYLE, WM_ERASEBKGND, WM_NCCREATE, WM_TIMER, WNDCLASSW, WS_EX_LAYERED,
     WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
@@ -139,7 +141,12 @@ impl OverlayWindow {
             );
             let _ = ShowWindow(self.hwnd, SW_SHOWNA);
             let _ = KillTimer(self.hwnd, FADE_TIMER_ID);
-            SetTimer(self.hwnd, FADE_TIMER_ID, self.performance.timer_tick_ms, None);
+            SetTimer(
+                self.hwnd,
+                FADE_TIMER_ID,
+                self.performance.timer_tick_ms,
+                None,
+            );
         }
 
         let _ = self.render_bitmap();
@@ -159,7 +166,12 @@ impl OverlayWindow {
         if self.visible {
             unsafe {
                 let _ = KillTimer(self.hwnd, FADE_TIMER_ID);
-                SetTimer(self.hwnd, FADE_TIMER_ID, self.performance.timer_tick_ms, None);
+                SetTimer(
+                    self.hwnd,
+                    FADE_TIMER_ID,
+                    self.performance.timer_tick_ms,
+                    None,
+                );
             }
             let _ = self.render_bitmap();
             let _ = self.present_with_opacity(self.opacity());
@@ -287,7 +299,10 @@ impl OverlayWindow {
         }
 
         let mut client = RECT::default();
-        unsafe { GetClientRect(self.hwnd, &mut client).map_err(|_| "failed to read overlay client rect".to_string())?; }
+        unsafe {
+            GetClientRect(self.hwnd, &mut client)
+                .map_err(|_| "failed to read overlay client rect".to_string())?;
+        }
         let width = client.right - client.left;
         let height = client.bottom - client.top;
 
