@@ -66,7 +66,7 @@ impl OverlayWindow {
             visible: false,
             started_at: None,
             style: OverlayStyle {
-                color: COLORREF(0x002830FF),
+                color: COLORREF(0x00FFFF00),
                 width: 48,
                 intensity: 220,
                 duration_ms: 220,

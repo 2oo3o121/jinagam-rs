@@ -1,13 +1,16 @@
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, POINT, WPARAM};
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{
     Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, LoadIconW, SetForegroundWindow,
-    TrackPopupMenu, HICON, HMENU, IDI_APPLICATION, MF_CHECKED, MF_DISABLED, MF_GRAYED, MF_POPUP,
-    MF_SEPARATOR, MF_STRING, TPM_BOTTOMALIGN, TPM_LEFTALIGN, TPM_RIGHTBUTTON,
+    TrackPopupMenu, HICON, HMENU, MF_CHECKED, MF_DISABLED, MF_GRAYED, MF_POPUP, MF_SEPARATOR,
+    MF_STRING, TPM_BOTTOMALIGN, TPM_LEFTALIGN, TPM_RIGHTBUTTON,
 };
+
+const IDI_TRAY_ICON: PCWSTR = PCWSTR(1 as *const u16);
 
 pub const WM_TRAY: u32 = 0x8000 + 77;
 
@@ -64,8 +67,13 @@ impl TrayIcon {
             uFlags: NIF_MESSAGE | NIF_ICON | NIF_TIP,
             uCallbackMessage: WM_TRAY,
             hIcon: unsafe {
+                let instance = HINSTANCE(
+                    GetModuleHandleW(None)
+                        .map_err(|_| "failed to get module handle")?
+                        .0,
+                );
                 HICON(
-                    LoadIconW(HINSTANCE::default(), IDI_APPLICATION)
+                    LoadIconW(instance, IDI_TRAY_ICON)
                         .map_err(|_| "failed to load tray icon")?
                         .0,
                 )

@@ -141,8 +141,7 @@ impl App {
 
     fn on_create(&mut self) -> Result<(), String> {
         self.monitor_cache.refresh();
-        self.tray
-            .add(self.hidden_hwnd, "jinagam-rs monitor boundary glow")?;
+        self.tray.add(self.hidden_hwnd, "jinagam")?;
         self.overlay
             .update_performance(performance_for_mode(self.settings.optimization));
         self.overlay.update_style(self.settings.overlay);
@@ -405,7 +404,7 @@ fn default_settings() -> Settings {
     Settings {
         enabled: true,
         overlay: OverlayStyle {
-            color: COLORREF(0x00FF8000),
+            color: COLORREF(0x00FFFF00),
             width: 48,
             intensity: 220,
             duration_ms: 220,
@@ -485,7 +484,7 @@ fn save_settings(settings: Settings) -> Result<(), String> {
 }
 
 fn settings_path() -> Option<PathBuf> {
-    let base = env::var_os("APPDATA")
+    let base = env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .or_else(|| env::current_dir().ok())?;
     Some(base.join("jinagam-rs").join("settings.txt"))
