@@ -14,7 +14,7 @@ By [EunsuKim03](https://github.com/EunsuKim03).
 
 For installation, download the packaged build from the `v1.0.0` release.
 
-- Download jinagam_v1.0.0.zip [here](https://github.com/2oo3o121/jinagam-rs/releases/tag/v1.0.0)
+- Download `jinagam_v1.0.0.zip` [here](https://github.com/2oo3o121/jinagam-rs/releases/tag/v1.0.0)
 
 ## Stack
 
